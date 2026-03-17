@@ -1,0 +1,12 @@
+{
+  "name": "chat-history-web",
+  "version": "1.0.0",
+  "description": "Chat History Web App",
+  "main": "index.html",
+  "scripts": {
+    "start": "serve ."
+  },
+  "devDependencies": {
+    "serve": "^14.0.0"
+  }
+}
