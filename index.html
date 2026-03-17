@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat History - Vercel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .chat-bubble-user { background-color: #0084ff; color: white; border-radius: 18px 18px 0 18px; }
+        .chat-bubble-ai { background-color: #e4e6eb; color: #050505; border-radius: 18px 18px 18px 0; }
+        .sidebar-item:hover { background-color: #f3f4f6; }
+        .sidebar-item.active { background-color: #e5e7eb; border-left: 4px solid #0084ff; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex overflow-hidden">
+
+    <!-- Sidebar -->
+    <div class="w-80 bg-white border-r flex flex-col h-full">
+        <div class="p-4 border-b bg-blue-600 text-white flex justify-between items-center">
+            <h1 class="font-bold text-lg"><i class="fas fa-history mr-2"></i> Lịch sử Chat</h1>
+            <button onclick="fetchData()" class="hover:rotate-180 transition-transform duration-500">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+        <div id="session-list" class="flex-1 overflow-y-auto p-2 space-y-2">
+            <!-- Sessions will be loaded here -->
+            <div class="p-8 text-center text-gray-400">Đang tải dữ liệu...</div>
+        </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col h-full bg-white">
+        <div id="chat-header" class="p-4 border-b flex items-center shadow-sm">
+            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-3">
+                <i class="fas fa-robot text-xl"></i>
+            </div>
+            <div>
+                <h2 id="current-title" class="font-bold text-gray-800">Chọn một cuộc hội thoại</h2>
+                <p id="current-time" class="text-xs text-gray-500">Lịch sử được đồng bộ từ Google Sheets</p>
+            </div>
+        </div>
+
+        <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+            <div class="h-full flex flex-col items-center justify-center text-gray-400">
+                <i class="fas fa-comments text-6xl mb-4 opacity-20"></i>
+                <p>Nội dung tin nhắn sẽ hiển thị ở đây</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxSc-7COilinUFoEGHLr0Mkp7WExZrfJRWdtrjzLTtT3KUQO8gkwfHcZBbbEhrwKh3h/exec?type=json';
+        let chatData = [];
+
+        async function fetchData() {
+            const sessionList = document.getElementById('session-list');
+            sessionList.innerHTML = '<div class="p-8 text-center text-gray-400">Đang đồng bộ...</div>';
+            
+            try {
+                const response = await fetch(API_URL);
+                const result = await response.json();
+                
+                // Giả sử: Cột 0 là ID/Date, Cột 1 là Title, Cột 2 là User Content, Cột 3 là AI Content, Cột 4 là History JSON
+                // Dựa trên sheet: Chats [Timestamp, Title, Message, Response, History]
+                chatData = result.rows.map(row => ({
+                    timestamp: row[0],
+                    title: row[1] || 'Cuộc hội thoại mới',
+                    message: row[2],
+                    response: row[3],
+                    history: row[4] ? JSON.parse(row[4]) : []
+                })).reverse(); // Mới nhất lên đầu
+
+                renderSessionList();
+            } catch (error) {
+                console.error('Lỗi fetch:', error);
+                sessionList.innerHTML = '<div class="p-8 text-center text-red-500 text-sm">Không thể kết nối API. Hãy kiểm tra quyền truy cập Apps Script.</div>';
+            }
+        }
+
+        function renderSessionList() {
+            const sessionList = document.getElementById('session-list');
+            sessionList.innerHTML = '';
+
+            chatData.forEach((chat, index) => {
+                const div = document.createElement('div');
+                div.className = `sidebar-item p-3 cursor-pointer rounded-lg transition-all`;
+                div.onclick = () => selectSession(index, div);
+                
+                const dateStr = new Date(chat.timestamp).toLocaleString('vi-VN', {hour:'2-digit', minute:'2-digit', day:'2-digit', month:'2-digit'});
+                
+                div.innerHTML = `
+                    <div class="font-medium text-gray-800 truncate">${chat.title}</div>
+                    <div class="text-xs text-gray-500 flex justify-between mt-1">
+                        <span>${dateStr}</span>
+                    </div>
+                `;
+                sessionList.appendChild(div);
+            });
+        }
+
+        function selectSession(index, element) {
+            // UI Update
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            const chat = chatData[index];
+            document.getElementById('current-title').innerText = chat.title;
+            document.getElementById('current-time').innerText = new Date(chat.timestamp).toLocaleString('vi-VN');
+
+            const container = document.getElementById('chat-container');
+            container.innerHTML = '';
+
+            // Render Tin nhắn từ History (nếu có)
+            if (chat.history && chat.history.length > 0) {
+                chat.history.forEach(msg => {
+                    appendMessage(msg.role === 'user' ? 'user' : 'ai', msg.content);
+                });
+            } else {
+                // Fallback nếu không có history JSON
+                if (chat.message) appendMessage('user', chat.message);
+                if (chat.response) appendMessage('ai', chat.response);
+            }
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendMessage(role, text) {
+            const container = document.getElementById('chat-container');
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            wrapper.innerHTML = `
+                <div class="max-w-[80%] p-3 shadow-sm ${role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}">
+                    <div class="text-sm whitespace-pre-wrap">${text}</div>
+                </div>
+            `;
+            container.appendChild(wrapper);
+        }
+
+        // Init
+        fetchData();
+    </script>
+</body>
+</html>
